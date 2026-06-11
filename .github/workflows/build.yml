@@ -1,0 +1,80 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Capacitor dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Write native build config
+        run: |
+          mkdir -p dist
+          FIREBASE_CONFIGURED=false
+          if [ -f google-services.json ] || [ -n "${{ secrets.GOOGLE_SERVICES_JSON }}" ] || [ -n "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" ]; then
+            FIREBASE_CONFIGURED=true
+          fi
+          cat > dist/native-build-config.json <<EOF
+          {
+            "androidFirebaseConfigured": ${FIREBASE_CONFIGURED},
+            "source": "delivery-package-github-action"
+          }
+          EOF
+
+      - name: Add Android platform
+        run: npx cap add android
+
+      - name: Sync prebuilt dist to Android project
+        run: npx cap sync android
+
+      - name: Prepare Android icons and notification resources
+        run: npm run prepare:android
+
+      - name: Restore Firebase config from GitHub Secret
+        run: |
+          if [ -n "${{ secrets.GOOGLE_SERVICES_JSON }}" ]; then
+            printf '%s' '${{ secrets.GOOGLE_SERVICES_JSON }}' > google-services.json
+          elif [ -n "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" ]; then
+            echo "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" | base64 --decode > google-services.json
+          fi
+
+      - name: Copy Firebase config if provided
+        run: |
+          if [ -f google-services.json ]; then
+            cp google-services.json android/app/google-services.json
+          fi
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x android/gradlew
+
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk

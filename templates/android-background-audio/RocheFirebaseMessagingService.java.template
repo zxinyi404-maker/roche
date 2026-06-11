@@ -1,0 +1,142 @@
+package __PACKAGE__;
+
+import android.Manifest;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.Context;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.media.AudioAttributes;
+import android.os.Build;
+import android.provider.Settings;
+import androidx.annotation.NonNull;
+import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
+import com.capacitorjs.plugins.pushnotifications.PushNotificationsPlugin;
+import com.google.firebase.messaging.FirebaseMessagingService;
+import com.google.firebase.messaging.RemoteMessage;
+import java.util.Map;
+
+public class RocheFirebaseMessagingService extends FirebaseMessagingService {
+    private static final String CHANNEL_ID = "roche_messages";
+
+    @Override
+    public void onMessageReceived(@NonNull RemoteMessage remoteMessage) {
+        super.onMessageReceived(remoteMessage);
+        PushNotificationsPlugin.sendRemoteMessage(remoteMessage);
+
+        Map<String, String> data = remoteMessage.getData();
+        if (data == null || data.isEmpty()) {
+            return;
+        }
+
+        if (!"android_service_v1".equals(data.get("nativeDisplayMode"))) {
+            return;
+        }
+
+        showNotification(data);
+    }
+
+    @Override
+    public void onNewToken(@NonNull String token) {
+        super.onNewToken(token);
+        PushNotificationsPlugin.onNewToken(token);
+    }
+
+    private void showNotification(Map<String, String> data) {
+        if (!canPostNotifications()) {
+            return;
+        }
+
+        createMessageNotificationChannel();
+
+        String title = nonEmpty(data.get("title"), "Roche");
+        String body = nonEmpty(data.get("body"), nonEmpty(data.get("preview"), "\u4f60\u6536\u5230\u4e86\u4e00\u6761\u65b0\u6d88\u606f"));
+        String requestId = nonEmpty(data.get("nativeDeliveryId"), nonEmpty(data.get("requestId"), String.valueOf(System.currentTimeMillis())));
+        int notificationId = Math.abs(requestId.hashCode());
+        if (notificationId == 0) {
+            notificationId = (int) (System.currentTimeMillis() & 0x7fffffff);
+        }
+
+        Intent intent = new Intent(this, MainActivity.class);
+        intent.setAction("roche.notification." + requestId);
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        for (Map.Entry<String, String> entry : data.entrySet()) {
+            intent.putExtra(entry.getKey(), entry.getValue());
+        }
+
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            flags |= PendingIntent.FLAG_IMMUTABLE;
+        }
+
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, notificationId, intent, flags);
+        int smallIcon = getResources().getIdentifier("push_icon", "drawable", getPackageName());
+        if (smallIcon == 0) {
+            smallIcon = getApplicationInfo().icon;
+        }
+
+        Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(smallIcon)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setDefaults(NotificationCompat.DEFAULT_SOUND | NotificationCompat.DEFAULT_VIBRATE)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .build();
+
+        NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (manager != null) {
+            manager.notify("roche-" + requestId, notificationId, notification);
+        }
+    }
+
+    private boolean canPostNotifications() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return true;
+        }
+
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void createMessageNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return;
+        }
+
+        NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (manager == null) {
+            return;
+        }
+
+        NotificationChannel channel = new NotificationChannel(
+            CHANNEL_ID,
+            "Roche Messages",
+            NotificationManager.IMPORTANCE_HIGH
+        );
+        channel.setDescription("Roche push notifications");
+        channel.enableVibration(true);
+        channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+        channel.setSound(
+            Settings.System.DEFAULT_NOTIFICATION_URI,
+            new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+        );
+        manager.createNotificationChannel(channel);
+    }
+
+    private static String nonEmpty(String value, String fallback) {
+        if (value == null || value.trim().isEmpty()) {
+            return fallback;
+        }
+
+        return value;
+    }
+}

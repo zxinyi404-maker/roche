@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/png" href="./pwa-icon.png" />
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5.0, user-scalable=no, interactive-widget=resizes-content" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#000000" />
+
+  <title>Roche</title>
+  <style>
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background: #000;
+    }
+
+    #boot-splash {
+      position: fixed;
+      inset: 0;
+      z-index: 2147483647;
+      background: #000;
+      transition: opacity 0.12s ease, visibility 0.12s ease;
+    }
+
+    #boot-splash.boot-splash-hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+  </style>
+  <script src="./location-override-fix.js"></script>
+  <script src="./native-push-bridge.js"></script>
+  <script type="module" crossorigin src="./assets/index-DgqHw6kx.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/db-layer-C-7ScXuK.js">
+  <link rel="modulepreload" crossorigin href="./assets/vue-vendor-tB21q04v.js">
+  <link rel="modulepreload" crossorigin href="./assets/auth-core-C3s1xJzw.js">
+  <link rel="modulepreload" crossorigin href="./assets/ai-core-CuZtkvdM.js">
+  <link rel="stylesheet" crossorigin href="./assets/index-JKOd0kRO.css">
+<link rel="manifest" href="./manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="./registerSW.js"></script></head>
+
+<body>
+  <div id="boot-splash" aria-hidden="true"></div>
+  <div id="app"></div>
+</body>
+
+</html>
