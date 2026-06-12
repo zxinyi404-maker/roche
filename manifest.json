@@ -1,0 +1,18 @@
+{
+  "id": "memory-curve",
+  "name": "记忆曲线",
+  "version": "1.0.0",
+  "description": "模拟人类遗忘曲线的记忆管理插件。记忆按情感权重分层衰减，支持强化/遗忘/批量清理，并可让角色以自己的视角总结对你的印象。",
+  "author": "ZXINYI404-maker",
+  "entry": "https://raw.githubusercontent.com/zxinyi404-maker/roche/main/memory-curve.js",
+  "hash": "",
+  "permissions": [
+    "persona:read",
+    "character:read",
+    "memory:read",
+    "memory:write",
+    "ai:chat",
+    "storage",
+    "ui"
+  ]
+}
