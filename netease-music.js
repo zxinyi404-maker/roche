@@ -145,6 +145,10 @@ let currentCtrl = null; // 当前请求的 AbortController, 用于取消
       const r = await call('recommend/songs', {}, { withCookie: true });
       return r?.data?.dailySongs || r?.dailySongs || [];
     },
+    async loginCellphone(phone, password) {
+      // NeteaseCloudMusicApi 标准 endpoint, 所有 fork 通常都保留
+      return call('login/cellphone', { phone, password, md5_password: password }, { withCookie: false });
+    },
     async getQrKey() {
       const r = await call('login/qrcode/key', {}, { withCookie: false });
       return r?.data?.unikey || r?.unikey || '';
@@ -388,23 +392,94 @@ let currentCtrl = null; // 当前请求的 AbortController, 用于取消
     }
 
     async function doLogin() {
+      // 手机号密码登录 (主路径, 兼容所有 NeteaseCloudMusicApi fork)
       const wrap = root.querySelector('.nm-login-wrap');
       wrap.innerHTML = '';
 
-      // 加载状态: 提示 + 取消按钮
-      const loading = el('div', { class: 'nm-empty' }, '正在获取登录 key...');
-      const cancelBtn = el('button', {
+      const phoneInput = el('input', {
+        type: 'tel', class: 'nm-input', placeholder: '手机号',
+      });
+      const passInput = el('input', {
+        type: 'password', class: 'nm-input', placeholder: '密码',
+      });
+      const tip = el('div', { class: 'nm-tip' }, '手机号密码登录 (网易云账号)');
+      const status = el('div', { class: 'nm-empty' });
+      status.style.display = 'none';
+
+      const loginBtn = el('button', {
+        class: 'nm-btn',
+        onclick: async () => {
+          const phone = phoneInput.value.trim();
+          const password = passInput.value;
+          if (!phone || !password) {
+            status.textContent = '请输入手机号和密码';
+            status.style.display = 'block';
+            return;
+          }
+          loginBtn.disabled = true;
+          loginBtn.textContent = '登录中...';
+          status.textContent = '正在登录...';
+          status.style.display = 'block';
+          try {
+            const r = await api.loginCellphone(phone, password);
+            console.log('[netease] login/cellphone ->', r);
+            if (r?.code === 200 && r?.cookie) {
+              setCookie(r.cookie);
+              wrap.innerHTML = '';
+              wrap.appendChild(el('div', { class: 'nm-empty' }, '登录成功 ✅'));
+              setTimeout(() => {
+                if (!unmounted) { wrap.innerHTML = ''; updateStatus(); }
+              }, 1500);
+            } else if (r?.code === -460) {
+              status.textContent = '需要图形验证码, 请改用扫码登录';
+            } else if (r?.code === -462) {
+              status.textContent = '密码错误次数太多, 请稍后再试或改用扫码';
+            } else {
+              status.textContent = '登录失败: ' + (r?.message || `code ${r?.code}`);
+            }
+          } catch (e) {
+            status.textContent = '登录失败: ' + e.message;
+          } finally {
+            loginBtn.disabled = false;
+            loginBtn.textContent = '登录';
+          }
+        },
+      }, '登录');
+
+      const switchToQr = el('button', {
+        class: 'nm-btn ghost',
+        onclick: doQrLogin,
+      }, '改用扫码');
+
+      const cancel = el('button', {
+        class: 'nm-btn ghost',
+        onclick: () => { wrap.innerHTML = ''; },
+      }, '取消');
+
+      wrap.appendChild(tip);
+      wrap.appendChild(phoneInput);
+      wrap.appendChild(passInput);
+      wrap.appendChild(loginBtn);
+      wrap.appendChild(switchToQr);
+      wrap.appendChild(cancel);
+      wrap.appendChild(status);
+    }
+
+    async function doQrLogin() {
+      // 扫码登录 (备选, 依赖 login/qrcode/* endpoint)
+      const wrap = root.querySelector('.nm-login-wrap');
+      wrap.innerHTML = '';
+
+      wrap.appendChild(el('div', { class: 'nm-empty' }, '正在获取登录 key...'));
+      wrap.appendChild(el('button', {
         class: 'nm-btn ghost',
         onclick: () => { abortCurrent(); wrap.innerHTML = ''; },
-      }, '取消');
-      wrap.appendChild(loading);
-      wrap.appendChild(cancelBtn);
+      }, '取消'));
 
       try {
         const key = await api.getQrKey();
         if (!key) throw new Error('获取 key 失败 (响应为空)');
 
-        // 本地用 unikey 生成 QR 码图片 (qrserver.com 免费 API, 国内有时不稳)
         const loginUrl = `https://music.163.com/login?codekey=${encodeURIComponent(key)}`;
         const qrServices = [
           `https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=10&data=${encodeURIComponent(loginUrl)}`,
@@ -421,28 +496,21 @@ let currentCtrl = null; // 当前请求的 AbortController, 用于取消
             svcIdx++;
             img.src = qrServices[svcIdx];
           } else {
-            // 所有 QR 服务都失败, 退化为显示 URL 文字让用户手动复制
             wrap.innerHTML = '';
-            const tip = el('div', { class: 'nm-tip' }, 'QR 图加载失败, 请复制以下链接到网易云 APP 打开:');
-            const urlBox = el('div', { class: 'nm-url-box' }, loginUrl);
-            const copyBtn = el('button', {
-              class: 'nm-btn ghost',
-              onclick: () => {
-                try { navigator.clipboard.writeText(loginUrl); alert('已复制, 粘贴到浏览器打开'); }
-                catch { prompt('复制此链接:', loginUrl); }
-              },
-            }, '复制链接');
+            wrap.appendChild(el('div', { class: 'nm-tip' }, 'QR 图加载失败, 改用手机密码登录'));
+            const back = el('button', {
+              class: 'nm-btn',
+              onclick: doLogin,
+            }, '手机密码登录');
             const cancel = el('button', {
               class: 'nm-btn ghost',
-              onclick: () => { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } wrap.innerHTML = ''; },
+              onclick: () => { wrap.innerHTML = ''; },
             }, '取消');
-            wrap.appendChild(tip);
-            wrap.appendChild(urlBox);
-            wrap.appendChild(copyBtn);
+            wrap.appendChild(back);
             wrap.appendChild(cancel);
           }
         };
-        const cancel = el('button', {
+        const cancel2 = el('button', {
           class: 'nm-btn ghost',
           onclick: () => {
             if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
@@ -452,9 +520,8 @@ let currentCtrl = null; // 当前请求的 AbortController, 用于取消
         }, '取消');
         wrap.appendChild(img);
         wrap.appendChild(status);
-        wrap.appendChild(cancel);
+        wrap.appendChild(cancel2);
 
-        // 轮询扫码状态
         pollTimer = setInterval(async () => {
           if (unmounted) return;
           try {
@@ -483,6 +550,10 @@ let currentCtrl = null; // 当前请求的 AbortController, 用于取消
       } catch (e) {
         wrap.innerHTML = '';
         wrap.appendChild(el('div', { class: 'nm-empty' }, '登录失败: ' + e.message));
+        wrap.appendChild(el('button', {
+          class: 'nm-btn',
+          onclick: doLogin,
+        }, '改用手机密码'));
         wrap.appendChild(el('button', {
           class: 'nm-btn ghost',
           onclick: () => { wrap.innerHTML = ''; },
