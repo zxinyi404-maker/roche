@@ -36,17 +36,46 @@
 
   /* ============== 网络 ============== */
 
+  const CALL_TIMEOUT = 10000; // 10 秒, 防止 Worker 抽风时插件卡死
+let currentCtrl = null; // 当前请求的 AbortController, 用于取消
+
   async function call(action, params = {}, { withCookie = true } = {}) {
     const headers = { 'Content-Type': 'application/json' };
     const cookie = withCookie ? getCookie() : '';
     if (cookie) headers['X-Netease-Cookie'] = cookie;
-    const res = await fetch(`${WORKER}/netease/${action}`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(params),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
+
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), CALL_TIMEOUT);
+    currentCtrl = ctrl;
+
+    let res;
+    try {
+      res = await fetch(`${WORKER}/netease/${action}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(params),
+        signal: ctrl.signal,
+      });
+    } catch (e) {
+      clearTimeout(timer);
+      if (currentCtrl === ctrl) currentCtrl = null;
+      if (e.name === 'AbortError') {
+        throw new Error(`请求超时 (${CALL_TIMEOUT/1000}s): ${action}`);
+      }
+      throw new Error(`网络错误: ${e.message || e}`);
+    }
+    clearTimeout(timer);
+    if (currentCtrl === ctrl) currentCtrl = null;
+
+    if (!res.ok) throw new Error(`HTTP ${res.status} (${action})`);
+    const data = await res.json();
+    console.log(`[netease] ${action} ->`, data);
+    return data;
+  }
+
+  // 取消当前在飞的请求
+  function abortCurrent() {
+    if (currentCtrl) { try { currentCtrl.abort(); } catch {} currentCtrl = null; }
   }
 
   /* ============== 工具 ============== */
@@ -121,8 +150,8 @@
       return r?.data?.unikey || r?.unikey || '';
     },
     async getQrUrl(key) {
-      const r = await call('login/qrcode/qrurl', { key, qrimg: true }, { withCookie: false });
-      return r?.data?.qrimg || r?.qrimg || '';
+      const r = await call('login/qrcode/create', { key, qrimg: true }, { withCookie: false });
+      return r?.data?.qrimg || r?.data?.qrurl || r?.qrimg || r?.qrurl || '';
     },
     async checkQrLogin(key) {
       return call('login/qrcode/check', { key }, { withCookie: false });
@@ -363,7 +392,19 @@
     async function doLogin() {
       const wrap = root.querySelector('.nm-login-wrap');
       wrap.innerHTML = '';
-      wrap.appendChild(el('div', { class: 'nm-empty' }, '正在生成二维码...'));
+
+      // 加载状态: 显示提示 + 取消按钮
+      const loading = el('div', { class: 'nm-empty' }, '正在生成二维码...');
+      const cancelBtn = el('button', {
+        class: 'nm-btn ghost',
+        onclick: () => {
+          abortCurrent();
+          wrap.innerHTML = '';
+        },
+      }, '取消');
+      wrap.appendChild(loading);
+      wrap.appendChild(cancelBtn);
+
       try {
         const key = await api.getQrKey();
         if (!key) throw new Error('获取 key 失败');
@@ -414,6 +455,10 @@
       } catch (e) {
         wrap.innerHTML = '';
         wrap.appendChild(el('div', { class: 'nm-empty' }, '登录失败: ' + e.message));
+        wrap.appendChild(el('button', {
+          class: 'nm-btn ghost',
+          onclick: () => { wrap.innerHTML = ''; },
+        }, '关闭'));
       }
     }
 
