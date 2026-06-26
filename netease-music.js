@@ -387,7 +387,7 @@ let currentCtrl = null; // 当前请求的 AbortController, 用于取消
       }
     }
 
-    async doLogin() {
+    async function doLogin() {
       const wrap = root.querySelector('.nm-login-wrap');
       wrap.innerHTML = '';
 
