@@ -1,0 +1,10 @@
+{
+  "id": "netease-music",
+  "name": "网易云音乐",
+  "version": "1.0.0",
+  "description": "基于 Cloudflare Worker 代理的网易云音乐插件，支持搜索、播放、歌词滚动、每日推荐、扫码登录。",
+  "author": "ZXINYI404-maker",
+  "entry": "https://raw.githubusercontent.com/zxinyi404-maker/roche/main/netease-music.js",
+  "hash": "",
+  "permissions": ["network", "storage", "ui"]
+}
