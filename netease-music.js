@@ -519,12 +519,33 @@ let currentCtrl = null; // 当前请求的 AbortController, 用于取消
       const backBtn = el('button', {
         class: 'nm-btn ghost',
         onclick: () => {
+          // 1) 停掉所有在飞的操作
           if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+          abortCurrent();
+          // 2) 清空登录区 + 暂停播放
           const lw = root.querySelector('.nm-login-wrap');
           if (lw) lw.innerHTML = '';
           if (audio) { try { audio.pause(); } catch {} }
           const t = root.querySelector('.nm-player-title');
           if (t) t.textContent = '未播放';
+          // 3) 尝试返回 Roche 上层页面 (按优先级试多种方式)
+          try {
+            if (typeof window.RochePlugin?.navigateBack === 'function') {
+              window.RochePlugin.navigateBack();
+            } else if (typeof window.Roche?.back === 'function') {
+              window.Roche.back();
+            } else if (window.parent && window.parent !== window && typeof window.parent.postMessage === 'function') {
+              window.parent.postMessage({ type: 'roche-navigate-back', source: 'netease-music' }, '*');
+            } else if (window.history.length > 1) {
+              window.history.back();
+            } else {
+              // 最后兜底: 调用 plugin 自己的 unmount, 让 Roche 把这个 App 卸掉
+              window.NeteaseMusicPlugin?.unmount?.(root);
+            }
+          } catch (e) {
+            console.warn('[netease] back navigation failed', e);
+            try { window.NeteaseMusicPlugin?.unmount?.(root); } catch {}
+          }
         },
       }, '← 返回');
       const loginBtn = el('button', { class: 'nm-btn secondary', onclick: doLogin }, '登录');
