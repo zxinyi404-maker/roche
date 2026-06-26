@@ -12,7 +12,7 @@
  * 挂载方式:
  *   A. 自动挂载: HTML 里有 <div id="netease-music"></div> 即可
  *   B. 手动挂载: window.NeteaseMusicPlugin.mount(containerElement)
- *   C. 全局注册: window.Roche.register({ id: 'netease-music', ... })
+ *   C. Roche 注册: window.RochePlugin.register({ id, apps: [...] }) — 见文件底部
  */
 
 (function () {
@@ -498,47 +498,63 @@
     return { mount, unmount, isMounted: () => !!root._neteaseMounted };
   }
 
-  /* ============== 全局挂载 ============== */
+  /* ============== 注册到 Roche 插件系统 ============== */
 
-  const Plugin = {
-    id: 'netease-music',
-    name: '网易云音乐',
-    icon: '🎵',
-    version: '1.0.0',
-  };
+  const PLUGIN_ID  = 'netease-music';
+  const APP_MUSIC  = 'netease-music-app';
 
-  Plugin.mount = function (container) {
-    if (!container) throw new Error('mount 需要传入容器元素');
+  function mountTo(container) {
+    if (!container) return;
     const view = createView(container);
     view.mount();
     container._neteaseView = view;
     return view;
-  };
+  }
 
-  Plugin.unmount = function (container) {
+  function unmountFrom(container) {
     if (container && container._neteaseView) {
       container._neteaseView.unmount();
       delete container._neteaseView;
     }
+  }
+
+  // 暴露给 DevTools / 手动挂载
+  window.NeteaseMusicPlugin = {
+    id: PLUGIN_ID,
+    name: '网易云音乐',
+    version: '1.0.0',
+    mount: mountTo,
+    unmount: unmountFrom,
   };
 
-  window.NeteaseMusicPlugin = Plugin;
-
+  // 自动挂载 (如果 HTML 里有 <div id="netease-music">)
   function tryAutoMount() {
     const target = document.getElementById('netease-music')
       || document.querySelector('[data-plugin="netease-music"]');
-    if (target && !target._neteaseView) {
-      Plugin.mount(target);
-    }
+    if (target && !target._neteaseView) mountTo(target);
   }
-
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', tryAutoMount);
   } else {
     tryAutoMount();
   }
 
-  if (window.Roche && typeof window.Roche.register === 'function') {
-    window.Roche.register(Plugin);
+  // 向 Roche 注册一个 App
+  if (window.RochePlugin && typeof window.RochePlugin.register === 'function') {
+    window.RochePlugin.register({
+      id: PLUGIN_ID,
+      name: '网易云音乐',
+      version: '1.0.0',
+      apps: [
+        {
+          id: APP_MUSIC,
+          name: '网易云音乐',
+          icon: 'music_note',
+          iconImage: '',
+          async mount(container, root) { mountTo(container); },
+          async unmount(container) { unmountFrom(container); },
+        }
+      ]
+    });
   }
 })();

@@ -6,5 +6,12 @@
   "author": "ZXINYI404-maker",
   "entry": "https://raw.githubusercontent.com/zxinyi404-maker/roche/main/netease-music.js",
   "hash": "",
-  "permissions": ["network", "storage", "ui"]
+  "permissions": ["network", "storage", "ui"],
+  "apps": [
+    {
+      "id": "netease-music-app",
+      "name": "网易云音乐",
+      "icon": "music_note"
+    }
+  ]
 }
