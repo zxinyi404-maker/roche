@@ -149,10 +149,6 @@ let currentCtrl = null; // 当前请求的 AbortController, 用于取消
       const r = await call('login/qrcode/key', {}, { withCookie: false });
       return r?.data?.unikey || r?.unikey || '';
     },
-    async getQrUrl(key) {
-      const r = await call('login/qrcode/create', { key, qrimg: true }, { withCookie: false });
-      return r?.data?.qrimg || r?.data?.qrurl || r?.qrimg || r?.qrurl || '';
-    },
     async checkQrLogin(key) {
       return call('login/qrcode/check', { key }, { withCookie: false });
     },
@@ -232,6 +228,7 @@ let currentCtrl = null; // 当前请求的 AbortController, 用于取消
   }
   .nm-login { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px; }
   .nm-login img { width: 180px; height: 180px; border: 1px solid var(--border, #ddd); border-radius: 8px; }
+  .nm-qr-img { width: 200px; height: 200px; background: #fff; padding: 8px; border-radius: 8px; }
   .nm-empty { padding: 40px; text-align: center; color: var(--text-2, #888); }
   .nm-tip { font-size: 12px; color: var(--text-2, #888); }
   .nm-status { font-size: 12px; color: var(--text-2, #888); padding: 4px 8px; }
@@ -389,29 +386,30 @@ let currentCtrl = null; // 当前请求的 AbortController, 用于取消
       }
     }
 
-    async function doLogin() {
+    async doLogin() {
       const wrap = root.querySelector('.nm-login-wrap');
       wrap.innerHTML = '';
 
-      // 加载状态: 显示提示 + 取消按钮
-      const loading = el('div', { class: 'nm-empty' }, '正在生成二维码...');
+      // 加载状态: 提示 + 取消按钮
+      const loading = el('div', { class: 'nm-empty' }, '正在获取登录 key...');
       const cancelBtn = el('button', {
         class: 'nm-btn ghost',
-        onclick: () => {
-          abortCurrent();
-          wrap.innerHTML = '';
-        },
+        onclick: () => { abortCurrent(); wrap.innerHTML = ''; },
       }, '取消');
       wrap.appendChild(loading);
       wrap.appendChild(cancelBtn);
 
       try {
         const key = await api.getQrKey();
-        if (!key) throw new Error('获取 key 失败');
-        const qrUrl = await api.getQrUrl(key);
+        if (!key) throw new Error('获取 key 失败 (响应为空)');
+
+        // 本地用 unikey 生成 QR 码图片 (qrserver.com 免费 API)
+        const loginUrl = `https://music.163.com/login?codekey=${encodeURIComponent(key)}`;
+        const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=10&data=${encodeURIComponent(loginUrl)}`;
+
         wrap.innerHTML = '';
-        const status = el('div', { class: 'nm-tip' }, '请用网易云 APP 扫码');
-        const img = el('img', { src: qrUrl, alt: 'QR Code' });
+        const status = el('div', { class: 'nm-tip' }, '请用网易云 APP 扫码登录');
+        const img = el('img', { src: qrImgUrl, alt: 'QR Code', class: 'nm-qr-img' });
         const cancel = el('button', {
           class: 'nm-btn ghost',
           onclick: () => {
@@ -424,6 +422,7 @@ let currentCtrl = null; // 当前请求的 AbortController, 用于取消
         wrap.appendChild(status);
         wrap.appendChild(cancel);
 
+        // 轮询扫码状态
         pollTimer = setInterval(async () => {
           if (unmounted) return;
           try {
@@ -434,10 +433,7 @@ let currentCtrl = null; // 当前请求的 AbortController, 用于取消
               wrap.innerHTML = '';
               wrap.appendChild(el('div', { class: 'nm-empty' }, '登录成功 ✅'));
               setTimeout(() => {
-                if (!unmounted) {
-                  wrap.innerHTML = '';
-                  updateStatus();
-                }
+                if (!unmounted) { wrap.innerHTML = ''; updateStatus(); }
               }, 1500);
             } else if (r?.code === 800) {
               clearInterval(pollTimer); pollTimer = null;
@@ -488,9 +484,20 @@ let currentCtrl = null; // 当前请求的 AbortController, 用于取消
       root.innerHTML = '';
 
       const status = el('div', { class: 'nm-status' });
+      const backBtn = el('button', {
+        class: 'nm-btn ghost',
+        onclick: () => {
+          if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+          const lw = root.querySelector('.nm-login-wrap');
+          if (lw) lw.innerHTML = '';
+          if (audio) { try { audio.pause(); } catch {} }
+          const t = root.querySelector('.nm-player-title');
+          if (t) t.textContent = '未播放';
+        },
+      }, '← 返回');
       const loginBtn = el('button', { class: 'nm-btn secondary', onclick: doLogin }, '登录');
       const logoutBtn = el('button', { class: 'nm-btn ghost', onclick: doLogout }, '退出');
-      const header = el('div', { class: 'nm-bar' }, status, loginBtn, logoutBtn);
+      const header = el('div', { class: 'nm-bar' }, backBtn, status, loginBtn, logoutBtn);
 
       const input = el('input', {
         class: 'nm-input', type: 'text', placeholder: '搜索歌曲 / 歌手',
