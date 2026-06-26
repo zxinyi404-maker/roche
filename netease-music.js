@@ -229,6 +229,7 @@ let currentCtrl = null; // 当前请求的 AbortController, 用于取消
   .nm-login { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px; }
   .nm-login img { width: 180px; height: 180px; border: 1px solid var(--border, #ddd); border-radius: 8px; }
   .nm-qr-img { width: 200px; height: 200px; background: #fff; padding: 8px; border-radius: 8px; }
+  .nm-url-box { word-break: break-all; padding: 8px; background: var(--bg-2, #f5f5f5); border-radius: 6px; font-size: 12px; max-width: 280px; }
   .nm-empty { padding: 40px; text-align: center; color: var(--text-2, #888); }
   .nm-tip { font-size: 12px; color: var(--text-2, #888); }
   .nm-status { font-size: 12px; color: var(--text-2, #888); padding: 4px 8px; }
@@ -403,13 +404,44 @@ let currentCtrl = null; // 当前请求的 AbortController, 用于取消
         const key = await api.getQrKey();
         if (!key) throw new Error('获取 key 失败 (响应为空)');
 
-        // 本地用 unikey 生成 QR 码图片 (qrserver.com 免费 API)
+        // 本地用 unikey 生成 QR 码图片 (qrserver.com 免费 API, 国内有时不稳)
         const loginUrl = `https://music.163.com/login?codekey=${encodeURIComponent(key)}`;
-        const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=10&data=${encodeURIComponent(loginUrl)}`;
+        const qrServices = [
+          `https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=10&data=${encodeURIComponent(loginUrl)}`,
+          `https://api.qrtools.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(loginUrl)}`,
+        ];
 
         wrap.innerHTML = '';
         const status = el('div', { class: 'nm-tip' }, '请用网易云 APP 扫码登录');
-        const img = el('img', { src: qrImgUrl, alt: 'QR Code', class: 'nm-qr-img' });
+        const img = el('img', { alt: 'QR Code', class: 'nm-qr-img' });
+        let svcIdx = 0;
+        img.src = qrServices[0];
+        img.onerror = () => {
+          if (svcIdx < qrServices.length - 1) {
+            svcIdx++;
+            img.src = qrServices[svcIdx];
+          } else {
+            // 所有 QR 服务都失败, 退化为显示 URL 文字让用户手动复制
+            wrap.innerHTML = '';
+            const tip = el('div', { class: 'nm-tip' }, 'QR 图加载失败, 请复制以下链接到网易云 APP 打开:');
+            const urlBox = el('div', { class: 'nm-url-box' }, loginUrl);
+            const copyBtn = el('button', {
+              class: 'nm-btn ghost',
+              onclick: () => {
+                try { navigator.clipboard.writeText(loginUrl); alert('已复制, 粘贴到浏览器打开'); }
+                catch { prompt('复制此链接:', loginUrl); }
+              },
+            }, '复制链接');
+            const cancel = el('button', {
+              class: 'nm-btn ghost',
+              onclick: () => { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } wrap.innerHTML = ''; },
+            }, '取消');
+            wrap.appendChild(tip);
+            wrap.appendChild(urlBox);
+            wrap.appendChild(copyBtn);
+            wrap.appendChild(cancel);
+          }
+        };
         const cancel = el('button', {
           class: 'nm-btn ghost',
           onclick: () => {
